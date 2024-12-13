@@ -1,61 +1,41 @@
-import requests
-from dotenv import load_dotenv
 import os
+import requests
+import time
+from datetime import datetime
+from dotenv import load_dotenv
 
 load_dotenv()
 
-# URL base da API do GitHub
-BASE_URL = 'https://api.github.com'
+GITHUB_API_URL = "https://api.github.com"
 HEADERS = {
-    'Accept': 'application/vnd.github.v3+json',
-    'Authorization': f'token {os.getenv("GITHUB_TOKEN")}'  # Use o token do arquivo .env
+    "Accept": "application/vnd.github.squirrel-girl-preview+json",
+    "Authorization": f"token {os.getenv('GITHUB_TOKEN')}",
 }
 
-def fetch_repositories(org='apache'):
-    languages_query = ' '.join([f'language:{lang}' for lang in ['JavaScript', 'Python', 'TypeScript', 'Java', 'C#']])
-    query = f'org:{org} {languages_query}'
-    url = f'{BASE_URL}/search/repositories?q={query}&sort=stars&order=desc'
-    
-    try:
-        response = requests.get(url, headers=HEADERS)
-        response.raise_for_status()
-        return response.json().get('items', [])
-    except requests.RequestException as e:
-        print(f"Erro ao buscar repositórios: {e}")
-        return []
+def fetch_repositories(org_name):
+    """
+    Busca todos os repositórios de uma organização que foram criados a partir de 2020.
+    """
+    url = f"{GITHUB_API_URL}/orgs/{org_name}/repos"
+    params = {"per_page": 100}
+    repositories = []
+    year_limit = 2020
+    while url:
+        response = requests.get(url, headers=HEADERS, params=params)
+        if response.status_code != 200:
+            print(f"Erro ao buscar repositórios: {response.status_code}, {response.text}")
+            break
 
-def fetch_pull_requests(owner, repo):
-    url = f'{BASE_URL}/repos/{owner}/{repo}/pulls?state=all'
-    
-    try:
-        response = requests.get(url, headers=HEADERS)
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException as e:
-        print(f"Erro ao buscar pull requests: {e}")
-        return []
+        data = response.json()
+        for repo in data:
+            # Verifique a data de criação e filtre repositórios a partir de 2020
+            created_at = datetime.strptime(repo['created_at'], '%Y-%m-%dT%H:%M:%SZ')
+            if created_at.year >= year_limit:
+                repositories.append(repo)
+        
+        url = response.links.get("next", {}).get("url")  # Paginação
+        
+        # Pausar por 1 segundo para evitar atingir o limite
+        time.sleep(2)
 
-def fetch_issues(owner, repo):
-    url = f'{BASE_URL}/repos/{owner}/{repo}/issues?state=all'
-    
-    try:
-        response = requests.get(url, headers=HEADERS)
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException as e:
-        print(f"Erro ao buscar issues: {e}")
-        return []
-
-def fetch_reactions(owner, repo, type, number):
-    url = f'{BASE_URL}/repos/{owner}/{repo}/{type}/{number}/reactions'
-    
-    try:
-        response = requests.get(url, headers=HEADERS)
-        if response.status_code == 404:
-            print(f"Reações não encontradas para {type} #{number}")
-            return []
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException as e:
-        print(f"Erro ao buscar reações: {e}")
-        return []
+    return repositories
